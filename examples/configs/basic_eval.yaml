@@ -1,0 +1,60 @@
+# AutoEval Basic Evaluation Configuration
+
+name: "basic_evaluation"
+description: "Basic trajectory evaluation with standard metrics"
+
+# Input files
+trajectory_file: "../data/sample_trajectory.json"
+scene_file: "../data/sample_trajectory.json"
+output_dir: "./results"
+
+# Metrics to evaluate
+metrics:
+  - collision
+  - following
+  - speed_compliance
+  - jerk
+  - ttc
+
+# Metric thresholds
+thresholds:
+  - metric_name: collision
+    min: 0
+    max: 0
+    comparison: "max"
+    enabled: true
+
+  - metric_name: following
+    min: 2.0
+    comparison: "min"
+    enabled: true
+
+  - metric_name: speed_compliance
+    max: 0.0
+    comparison: "max"
+    enabled: true
+
+  - metric_name: jerk
+    max: 2.0
+    comparison: "max"
+    enabled: true
+
+  - metric_name: ttc
+    min: 3.0
+    comparison: "min"
+    enabled: true
+
+# Simulation settings
+simulation:
+  dt: 0.1
+  duration: 10.0
+  enable_collision_check: true
+  enable_road_boundary_check: true
+
+# Report settings
+report:
+  formats:
+    - json
+    - html
+  include_charts: true
+  include_details: true

@@ -1,0 +1,65 @@
+# Build directories
+build/
+cmake-build-/
+.xmake/
+*.build/
+
+# Compiled files
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.dylib
+*.exe
+*.out
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.vs/
+.idea/
+*.swp
+*.swo
+*~
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test outputs
+test_results/
+*.xml
+*.log
+
+# Reports (optional, remove if you want to track generated reports)
+*.html
+*.pdf
+
+# Generated files
+autoeval_export.h
+CHANGELOG.md
+CONTRIBUTING.md
