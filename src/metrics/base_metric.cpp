@@ -110,21 +110,32 @@ core::MetricResult CollisionMetric::compute(const core::Scene& scene,
     const auto& ego = *ego_opt;
     int collision_count = 0;
 
+    // Pre-compute vehicle dimensions for quick rejection
+    double ego_half_length = ego.points.empty() ? 2.5 : ego.points[0].dimensions.length / 2.0;
+    double ego_half_width = ego.points.empty() ? 1.0 : ego.points[0].dimensions.width / 2.0;
+
     for (const auto& traj : scene.trajectories) {
         if (traj.type == core::ObjectType::EgoVehicle) continue;
         if (traj.type == core::ObjectType::StaticObstacle) continue;
 
-        // Check collision with each point
+        // Use binary search to find nearby points - O(log n) instead of O(n)
         for (const auto& ego_point : ego.points) {
-            for (const auto& obj_point : traj.points) {
-                // Only check if timestamps are close
-                if (std::abs(ego_point.timestamp - obj_point.timestamp) > 0.1) {
-                    continue;
-                }
+            auto near_point = traj.getPointAtTime(ego_point.timestamp);
+            if (!near_point) continue;
 
-                if (checkCollision(ego_point, obj_point, safety_margin_)) {
-                    collision_count++;
-                }
+            // Quick distance check before expensive collision detection
+            double dx = ego_point.x - near_point->x;
+            double dy = ego_point.y - near_point->y;
+            double dist_sq = dx * dx + dy * dy;
+            double quick_reject_dist = (ego_half_length + near_point->dimensions.length / 2.0 + safety_margin_) * 2.0;
+
+            if (dist_sq > quick_reject_dist * quick_reject_dist) {
+                continue;  // Too far, skip expensive check
+            }
+
+            // Full collision check
+            if (checkCollision(ego_point, *near_point, safety_margin_)) {
+                collision_count++;
             }
         }
     }
@@ -798,56 +809,57 @@ std::vector<core::MetricResult> computeMetrics(const std::vector<std::string>& n
 
 bool checkCollision(const core::TrajectoryPoint& p1, const core::TrajectoryPoint& p2, double margin) {
     // Simple bounding box collision detection
-    double dx = std::abs(p1.x - p2.x);
-    double dy = std::abs(p1.y - p2.y);
+    // Transform p2 to p1's local frame
+    double dx = p2.x - p1.x;
+    double dy = p2.y - p1.y;
 
     double half_width1 = p1.dimensions.width / 2.0;
     double half_length1 = p1.dimensions.length / 2.0;
     double half_width2 = p2.dimensions.width / 2.0;
     double half_length2 = p2.dimensions.length / 2.0;
 
-    // Check collision with vehicle oriented heading
-    // Transform p2 to p1's local frame
+    // Transform to p1's local coordinate system
     double cos_h = std::cos(p1.heading);
     double sin_h = std::sin(p1.heading);
 
     double dx_local = dx * cos_h + dy * sin_h;
     double dy_local = -dx * sin_h + dy * cos_h;
 
-    double collision_threshold_x = half_length1 + half_length2 - margin;
-    double collision_threshold_y = half_width1 + half_width2 - margin;
+    double collision_threshold_x = half_length1 + half_length2 + margin;
+    double collision_threshold_y = half_width1 + half_width2 + margin;
 
-    return (dx_local < collision_threshold_x) && (dy_local < collision_threshold_y);
+    return (std::abs(dx_local) < collision_threshold_x) && (std::abs(dy_local) < collision_threshold_y);
 }
 
 std::optional<double> computeTTC(const core::Trajectory& traj1, const core::Trajectory& traj2) {
     double min_ttc = std::numeric_limits<double>::max();
 
+    // Use binary search for each point in traj1 - O(n log m) instead of O(n*m)
     for (const auto& p1 : traj1.points) {
-        for (const auto& p2 : traj2.points) {
-            // Only check at similar times
-            if (std::abs(p1.timestamp - p2.timestamp) > 0.1) continue;
+        auto p2_opt = traj2.getPointAtTime(p1.timestamp);
+        if (!p2_opt) continue;
 
-            // Compute relative velocity
-            double dvx = p1.velocity * std::cos(p1.heading) - p2.velocity * std::cos(p2.heading);
-            double dvy = p1.velocity * std::sin(p1.heading) - p2.velocity * std::sin(p2.heading);
+        const auto& p2 = *p2_opt;
 
-            // Compute relative position vector
-            double dx = p2.x - p1.x;
-            double dy = p2.y - p1.y;
+        // Compute relative velocity
+        double dvx = p1.velocity * std::cos(p1.heading) - p2.velocity * std::cos(p2.heading);
+        double dvy = p1.velocity * std::sin(p1.heading) - p2.velocity * std::sin(p2.heading);
 
-            // Project relative position onto relative velocity
-            double relative_dist = std::sqrt(dx * dx + dy * dy);
-            double rel_v_mag = std::sqrt(dvx * dvx + dvy * dvy);
+        // Compute relative position vector
+        double dx = p2.x - p1.x;
+        double dy = p2.y - p1.y;
 
-            // Simple TTC: distance / closing speed
-            if (rel_v_mag > 0.01) {
-                // Check if approaching
-                double closing_speed = -(dx * dvx + dy * dvy) / relative_dist;
-                if (closing_speed > 0.01) {
-                    double ttc = relative_dist / closing_speed;
-                    min_ttc = std::min(min_ttc, ttc);
-                }
+        // Project relative position onto relative velocity
+        double relative_dist = std::sqrt(dx * dx + dy * dy);
+        double rel_v_mag = std::sqrt(dvx * dvx + dvy * dvy);
+
+        // Simple TTC: distance / closing speed
+        if (rel_v_mag > 0.01) {
+            // Check if approaching
+            double closing_speed = -(dx * dvx + dy * dvy) / relative_dist;
+            if (closing_speed > 0.01) {
+                double ttc = relative_dist / closing_speed;
+                min_ttc = std::min(min_ttc, ttc);
             }
         }
     }

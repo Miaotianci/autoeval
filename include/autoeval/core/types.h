@@ -174,18 +174,34 @@ struct Trajectory {
     /**
      * @brief Get point at specific time (interpolated)
      */
+    /**
+     * @brief Get interpolated point at given time using binary search - O(log n)
+     * @param t Time to interpolate at
+     * @return Interpolated point at time t, or nullopt if trajectory is empty
+     */
     std::optional<TrajectoryPoint> getPointAtTime(double t) const {
         if (points.empty()) return std::nullopt;
         if (t <= points.front().timestamp) return points.front();
         if (t >= points.back().timestamp) return points.back();
 
-        // Find the segment containing t
-        for (size_t i = 1; i < points.size(); ++i) {
-            if (t <= points[i].timestamp) {
-                return points[i - 1].getPointAtTime(t, points[i]);
+        // Binary search for the segment containing t - O(log n)
+        size_t left = 0;
+        size_t right = points.size() - 1;
+
+        while (left < right) {
+            size_t mid = left + (right - left + 1) / 2;
+            if (points[mid].timestamp <= t) {
+                left = mid;
+            } else {
+                right = mid - 1;
             }
         }
-        return points.back();
+
+        // Now points[left] <= t < points[left + 1] (if left + 1 exists)
+        if (left + 1 < points.size()) {
+            return points[left].getPointAtTime(t, points[left + 1]);
+        }
+        return points[left];
     }
 
     /**
