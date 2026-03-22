@@ -49,11 +49,57 @@ set_project("autoeval")
         add_packages("spdlog", "yaml-cpp", "nlohmann_json", "fmt")
 
     -- ========================================
-    -- Target: autoeval_test (Test Suite)
+    -- Target: autoeval_test (Test Suite - runs all tests)
     -- ========================================
     target("autoeval_test")
         set_kind("binary")
-        add_files("tests/unit/*.cpp")
+        add_deps("autoeval_test_types", "autoeval_test_metrics",
+                 "autoeval_test_loader", "autoeval_test_plugin",
+                 "autoeval_test_integration")
+        on_run(function (target)
+            import("lib.detect.find_program")
+            local ok = os.exec("xmake run autoeval_test_types") == 0
+            ok = os.exec("xmake run autoeval_test_metrics") == 0 and ok
+            ok = os.exec("xmake run autoeval_test_loader") == 0 and ok
+            ok = os.exec("xmake run autoeval_test_plugin") == 0 and ok
+            ok = os.exec("xmake run autoeval_test_integration") == 0 and ok
+            if not ok then osraise("Some tests failed") end
+        end)
+
+    -- Unit tests
+    target("autoeval_test_types")
+        set_kind("binary")
+        add_files("tests/unit/test_types.cpp")
+        add_deps("autoeval_core")
+        add_packages("spdlog", "yaml-cpp", "nlohmann_json")
+
+    target("autoeval_test_metrics")
+        set_kind("binary")
+        add_files("tests/unit/test_metrics.cpp")
+        add_deps("autoeval_core")
+        add_packages("spdlog", "yaml-cpp", "nlohmann_json")
+
+    target("autoeval_test_loader")
+        set_kind("binary")
+        add_files("tests/unit/test_loader.cpp")
+        add_deps("autoeval_core")
+        add_packages("spdlog", "yaml-cpp", "nlohmann_json")
+
+    target("autoeval_test_plugin")
+        set_kind("binary")
+        add_files("tests/unit/test_plugin.cpp")
+        add_deps("autoeval_core")
+        add_packages("spdlog", "yaml-cpp", "nlohmann_json")
+
+    target("autoeval_test_integration")
+        set_kind("binary")
+        add_files("tests/integration/test_evaluator.cpp")
+        add_deps("autoeval_core")
+        add_packages("spdlog", "yaml-cpp", "nlohmann_json")
+
+    target("autoeval_bench")
+        set_kind("binary")
+        add_files("tests/integration/test_benchmark.cpp")
         add_deps("autoeval_core")
         add_packages("spdlog", "yaml-cpp", "nlohmann_json")
 

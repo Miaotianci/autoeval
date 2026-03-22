@@ -1,0 +1,140 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ============================================================================
+  # Linux (GCC)
+  # ============================================================================
+  linux-gcc:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++-14 \
+            libspdlog-dev libyaml-cpp-dev nlohmann-json3-dev libfmt-dev
+
+      - name: Configure (CMake)
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=g++-14
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Build (xmake as fallback)
+        run: |
+          which xmake || curl -fsSL https://xmake.io/shget.text | bash
+          xmake f -m release -p linux --yes
+          xmake build --yes
+
+      - name: Run unit tests
+        run: ./build/linux/x86_64/release/autoeval_test 2>/dev/null || ./build/autoeval_test
+
+      - name: Run benchmarks
+        run: |
+          cmake --build build --target autoeval_bench 2>/dev/null || true
+          ./build/bench/autoeval_bench 2>/dev/null || echo "Benchmark target not configured"
+
+  # ============================================================================
+  # Windows (MSVC)
+  # ============================================================================
+  windows-msvc:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: |
+          cmake -B build -G "Visual Studio 17 2022" -A x64 \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Run tests
+        run: ./build/Release/autoeval_test.exe
+
+  # ============================================================================
+  # Windows (MinGW via xmake)
+  # ============================================================================
+  windows-xmake:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install xmake
+        run: |
+          $xmake = "$env:TEMP\xmake.exe"
+          Invoke-WebRequest -Uri "https://github.com/xmake-io/xmake/releases/download/v2.9.5/xmake-v2.9.5.win64.exe" -OutFile $xmake
+          & $xmake /silent /admin
+          if (Test-Path Env:\Path) { $env:Path = "C:\xmake;$env:Path" }
+
+      - name: Configure xmake
+        run: xmake f -m release -p mingw --yes
+
+      - name: Build core
+        run: xmake build autoeval_core autoeval_test --yes
+
+      - name: Run tests
+        run: xmake run autoeval_test
+
+  # ============================================================================
+  # macOS (Clang)
+  # ============================================================================
+  macos:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install spdlog yaml-cpp nlohmann-json fmt xmake
+
+      - name: Configure xmake
+        run: xmake f -m release -p macos --yes
+
+      - name: Build
+        run: xmake build autoeval_core autoeval_test --yes
+
+      - name: Run tests
+        run: xmake run autoeval_test
+
+  # ============================================================================
+  # Code Quality (Linux)
+  # ============================================================================
+  quality:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install clang-tidy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy-18
+
+      - name: Configure with clang-tidy
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_CLANG_TIDY="clang-tidy-18;--format-style=google"
+
+      - name: Build (will warn on lint issues)
+        run: cmake --build build --parallel 2>&1 | tee clang_output.txt || true
+
+      - name: Check for warnings
+        run: |
+          grep -c "warning:" clang_output.txt || echo "0 warnings"

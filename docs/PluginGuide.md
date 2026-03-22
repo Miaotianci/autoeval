@@ -2,15 +2,195 @@
 
 ## 概述
 
-AutoEval提供了一个插件系统，允许您使用自定义指标、数据加载器和报告生成器扩展框架。插件可以在运行时动态加载。
+AutoEval 提供了一个完整的插件系统，支持运行时动态加载自定义指标、数据加载器和报告生成器。
+插件采用跨平台实现（Windows: `.dll`, Linux: `.so`, macOS: `.dylib`）。
 
 ---
 
 ## 插件类型
 
-1. **指标插件**：添加自定义评估指标
-2. **加载器插件**：支持新的数据格式
-3. **报告器插件**：生成新格式的报告
+| 类型 | 接口 | 用途 |
+|------|------|------|
+| Metric | `IMetricPlugin` | 添加自定义评估指标 |
+| Loader | `ILoaderPlugin` | 支持新的数据格式 |
+| Reporter | `IReporterPlugin` | 生成新格式的报告 |
+| Adapter | `IPlugin` | 自定义算法适配器 |
+
+---
+
+## 创建指标插件
+
+### 基本结构
+
+```cpp
+#include "autoeval/plugin/plugin_interface.h"
+#include "autoeval/metrics/base_metric.h"
+
+class MyCustomMetric : public IMetric {
+public:
+    // 必须定义 PLUGIN_NAME 常量（供导出宏使用）
+    static constexpr const char* PLUGIN_NAME = "my_metric";
+
+    MetricMetadata getMetadata() const override {
+        return {
+            .name = "my_metric",
+            .display_name = "My Custom Metric",
+            .description = "Description...",
+            .category = MetricCategory::Safety,
+            .unit = "count",
+            .default_comparison = "max",
+            .requires_ego = true,
+            .requires_surrounding = false,
+            .default_min = 0.0,
+            .default_max = 5.0,
+        };
+    }
+
+    MetricResult compute(const Scene& scene,
+                        EvaluationContext* ctx) const override {
+        // 实现计算逻辑
+        MetricResult result;
+        result.name = getMetadata().name;
+        result.value = computed_value;
+        result.pass = (result.value <= 5.0);
+        return result;
+    }
+};
+
+// 插件入口类
+class MyMetricPlugin : public IMetricPlugin {
+public:
+    static constexpr const char* PLUGIN_NAME = "my_metric";
+
+    std::string getName() const override { return "my_metric"; }
+    std::string getVersion() const override { return "1.0.0"; }
+    std::string getDescription() const override { return "My custom metric plugin"; }
+    std::string getAuthor() const override { return "Your Name"; }
+    PluginType getType() const override { return PluginType::Metric; }
+
+    bool initialize() override {
+        spdlog::info("MyMetricPlugin loaded");
+        return true;
+    }
+
+    std::shared_ptr<IMetric> createMetric() override {
+        return std::make_shared<MyCustomMetric>();
+    }
+
+    bool isCompatible(const std::string& version) const override {
+        // 兼容 0.x.x 版本
+        return version.empty() || version[0] == '0';
+    }
+};
+
+// 导出插件（关键！）
+AUTOEVAL_EXPORT_METRIC_PLUGIN(MyMetricPlugin)
+```
+
+### 编译插件
+
+**Windows (MinGW):**
+```bash
+cd plugins
+xmake f -p mingw -m release
+xmake build example_metric
+# 输出: AutoEvalHardBrake.dll
+```
+
+**Linux:**
+```bash
+cd plugins
+xmake f -p linux -m release
+xmake build example_metric
+# 输出: libautoeval_hard_brake.so
+```
+
+---
+
+## 加载插件
+
+### 自动加载（从目录）
+
+```cpp
+#include "autoeval/plugin/plugin_interface.h"
+
+auto& mgr = PluginManager::instance();
+
+// 添加搜索路径
+mgr.addSearchPath("/path/to/plugins");
+
+// 从目录加载所有插件
+size_t loaded = mgr.loadPluginsFromDirectory("./plugins", false);
+```
+
+### 手动加载（单文件）
+
+```cpp
+mgr.loadPlugin("./plugins/AutoEvalHardBrake.dll");
+```
+
+### 插件加载位置
+
+插件会自动在以下路径搜索：
+
+| 平台 | 默认路径 |
+|------|----------|
+| Windows | `./plugins`, `./lib`, `./bin/plugins`, `%LOCALAPPDATA%\AutoEval\plugins` |
+| Linux | `./plugins`, `./lib`, `/usr/local/lib/autoeval`, `~/.local/lib/autoeval` |
+| macOS | `./plugins`, `./lib`, `/usr/local/lib/autoeval`, `~/.local/lib/autoeval` |
+
+---
+
+## 创建加载器插件
+
+```cpp
+class MyBinaryLoader : public IDataLoader {
+public:
+    static constexpr const char* PLUGIN_NAME = "binary";
+
+    std::string getName() const override { return "binary"; }
+    std::vector<std::string> getSupportedExtensions() const override {
+        return {".bin", ".traj"};
+    }
+
+    LoadResult loadTrajectories(const std::filesystem::path& path,
+                                std::vector<Trajectory>& out) override {
+        // 实现解析逻辑
+        return result;
+    }
+};
+
+class MyBinaryPlugin : public ILoaderPlugin {
+public:
+    std::string getName() const override { return "binary"; }
+    std::string getVersion() const override { return "1.0.0"; }
+    PluginType getType() const override { return PluginType::Loader; }
+    std::shared_ptr<IDataLoader> createLoader() override {
+        return std::make_shared<MyBinaryLoader>();
+    }
+    bool isCompatible(const std::string& v) const override {
+        return v.empty() || v[0] == '0';
+    }
+};
+
+AUTOEVAL_EXPORT_LOADER_PLUGIN(MyBinaryPlugin)
+```
+
+---
+
+## 版本兼容性
+
+每个插件必须导出 `autoeval_get_plugin_api_version()` 函数，返回 `AUTOEVAL_PLUGIN_API_VERSION`（当前为 1）。
+插件的 `isCompatible()` 方法接收主程序版本字符串（如 `"0.1.0"`），
+应返回 `true` 表示兼容。
+
+---
+
+## 示例插件
+
+查看 `plugins/example_metric/` 目录获取完整示例：
+- `src/hard_brake_metric.cpp` — 指标插件（急刹车检测）
+- `src/binary_loader.cpp` — 加载器插件（二进制格式）
 
 ---
 

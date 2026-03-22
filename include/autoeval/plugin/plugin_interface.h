@@ -279,6 +279,16 @@ private:
 };
 
 // ============================================================================
+// Plugin API Version
+// ============================================================================
+
+/**
+ * @brief Plugin API version constant.
+ * Plugins exporting this symbol must return the same value for compatibility.
+ */
+#define AUTOEVAL_PLUGIN_API_VERSION 1
+
+// ============================================================================
 // Plugin Export Macros
 // ============================================================================
 
@@ -289,43 +299,96 @@ private:
 #endif
 
 /**
- * @brief Export a metric plugin
+ * @brief Export a metric plugin.
+ *
+ * The PLUGIN_CLASS must have:
+ *   - std::string getName() const
+ *   - std::string getVersion() const
+ *   - std::string getDescription() const
+ *   - std::string getAuthor() const
+ *   - std::shared_ptr<metrics::IMetric> createMetric()
+ *
+ * Usage:
+ *   class MyMetricPlugin : public IMetricPlugin { ... };
+ *   AUTOEVAL_EXPORT_METRIC_PLUGIN(MyMetricPlugin)
  */
-#define AUTOEVAL_EXPORT_METRIC_PLUGIN(PluginClass) \
+#define AUTOEVAL_EXPORT_METRIC_PLUGIN(PLUGIN_CLASS) \
     extern "C" { \
-        AUTOEVAL_PLUGIN_EXPORT autoeval::plugin::IMetricPlugin* autoeval_create_metric_plugin() { \
-            return new PluginClass(); \
-        } \
-        AUTOEVAL_PLUGIN_EXPORT void autoeval_destroy_metric_plugin(autoeval::plugin::IMetricPlugin* plugin) { \
-            delete plugin; \
+        AUTOEVAL_PLUGIN_EXPORT int autoeval_get_plugin_api_version() { \
+            return AUTOEVAL_PLUGIN_API_VERSION; \
         } \
         AUTOEVAL_PLUGIN_EXPORT const char* autoeval_get_plugin_name() { \
-            return PluginClass().getName().c_str(); \
+            return PLUGIN_CLASS::PLUGIN_NAME; \
         } \
-    }
-
-/**
- * @brief Export a loader plugin
- */
-#define AUTOEVAL_EXPORT_LOADER_PLUGIN(PluginClass) \
-    extern "C" { \
-        AUTOEVAL_PLUGIN_EXPORT autoeval::plugin::ILoaderPlugin* autoeval_create_loader_plugin() { \
-            return new PluginClass(); \
+        AUTOEVAL_PLUGIN_EXPORT autoeval::plugin::IMetricPlugin* autoeval_create_metric_plugin() { \
+            return new PLUGIN_CLASS(); \
         } \
-        AUTOEVAL_PLUGIN_EXPORT void autoeval_destroy_loader_plugin(autoeval::plugin::ILoaderPlugin* plugin) { \
+        AUTOEVAL_PLUGIN_EXPORT void autoeval_destroy_metric_plugin( \
+            autoeval::plugin::IMetricPlugin* plugin) { \
             delete plugin; \
         } \
     }
 
 /**
- * @brief Export a reporter plugin
+ * @brief Export a loader plugin.
+ *
+ * The PLUGIN_CLASS must have:
+ *   - std::string getName() const
+ *   - std::string getVersion() const
+ *   - std::string getDescription() const
+ *   - std::string getAuthor() const
+ *   - std::shared_ptr<loader::IDataLoader> createLoader()
+ *
+ * Usage:
+ *   class MyLoaderPlugin : public ILoaderPlugin { ... };
+ *   AUTOEVAL_EXPORT_LOADER_PLUGIN(MyLoaderPlugin)
  */
-#define AUTOEVAL_EXPORT_REPORTER_PLUGIN(PluginClass) \
+#define AUTOEVAL_EXPORT_LOADER_PLUGIN(PLUGIN_CLASS) \
     extern "C" { \
-        AUTOEVAL_PLUGIN_EXPORT autoeval::plugin::IReporterPlugin* autoeval_create_reporter_plugin() { \
-            return new PluginClass(); \
+        AUTOEVAL_PLUGIN_EXPORT int autoeval_get_plugin_api_version() { \
+            return AUTOEVAL_PLUGIN_API_VERSION; \
         } \
-        AUTOEVAL_PLUGIN_EXPORT void autoeval_destroy_reporter_plugin(autoeval::plugin::IReporterPlugin* plugin) { \
+        AUTOEVAL_PLUGIN_EXPORT const char* autoeval_get_plugin_name() { \
+            return PLUGIN_CLASS::PLUGIN_NAME; \
+        } \
+        AUTOEVAL_PLUGIN_EXPORT autoeval::plugin::ILoaderPlugin* autoeval_create_loader_plugin() { \
+            return new PLUGIN_CLASS(); \
+        } \
+        AUTOEVAL_PLUGIN_EXPORT void autoeval_destroy_loader_plugin( \
+            autoeval::plugin::ILoaderPlugin* plugin) { \
+            delete plugin; \
+        } \
+    }
+
+/**
+ * @brief Export a reporter plugin.
+ *
+ * The PLUGIN_CLASS must have:
+ *   - static constexpr const char* PLUGIN_NAME
+ *   - std::string getName() const
+ *   - std::string getVersion() const
+ *   - std::string getDescription() const
+ *   - std::string getAuthor() const
+ *   - std::vector<std::string> getFormats() const
+ *   - bool generate(const core::EvaluationSummary&, const std::filesystem::path&)
+ *
+ * Usage:
+ *   class MyReporterPlugin : public IReporterPlugin { ... };
+ *   AUTOEVAL_EXPORT_REPORTER_PLUGIN(MyReporterPlugin)
+ */
+#define AUTOEVAL_EXPORT_REPORTER_PLUGIN(PLUGIN_CLASS) \
+    extern "C" { \
+        AUTOEVAL_PLUGIN_EXPORT int autoeval_get_plugin_api_version() { \
+            return AUTOEVAL_PLUGIN_API_VERSION; \
+        } \
+        AUTOEVAL_PLUGIN_EXPORT const char* autoeval_get_plugin_name() { \
+            return PLUGIN_CLASS::PLUGIN_NAME; \
+        } \
+        AUTOEVAL_PLUGIN_EXPORT autoeval::plugin::IReporterPlugin* autoeval_create_reporter_plugin() { \
+            return new PLUGIN_CLASS(); \
+        } \
+        AUTOEVAL_PLUGIN_EXPORT void autoeval_destroy_reporter_plugin( \
+            autoeval::plugin::IReporterPlugin* plugin) { \
             delete plugin; \
         } \
     }
